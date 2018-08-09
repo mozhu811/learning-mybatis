@@ -6,13 +6,18 @@
 	* [通过DTO传递](#通过dto传递)
 	* [其他情况](#其他情况)
 * [源码分析Mybatis的参数处理过程](#源码分析mybatis的参数处理过程)
-      
+* [Mybatis的参数值获取方式](#mybatis的参数值获取方式)
+	* [#{}方式获取参数值的其他用法](#方式获取参数值的其他用法)
+* [Select元素及部分属性用法](#select元素及部分属性用法)
+	* [返回单个对象](#返回单个对象)
+	* [返回List&lt;T&gt;](#返回listt)
+	* [返回单条记录封装一个Map映射](#返回单条记录封装一个map映射)
+	* [返回多条记录封装一个Map映射](#返回多条记录封装一个map映射)
+	* [select元素的属性](#select元素的属性)
+		* [部分属性使用示例](#部分属性使用示例)
+    
 ## 项目介绍
 该repo为学习Mybatis时的记录,该文档主要记录Mybatis的相关知识和源码分析.
-
-* 2018年08月02日
-  * 更新[通过源码分析Mybatis的参数处理方式]
-* 待施工......
 
 ## Mybatis参数处理方式
 ### 通常方式
@@ -93,7 +98,7 @@ public class EmployeeDTO{
 
 ### 其他情况
 ```java
-public class EmployeeMapper{
+public interface EmployeeMapper{
 	/**
 	* 通过id和名字查找雇员
 	* 
@@ -142,7 +147,7 @@ public class EmployeeMapper{
 Mapper接口
 
 ```java
-public class EmployeeMapper{
+public interface EmployeeMapper{
 	/**
 	* 通过id,名字和性别查询雇员
 	* @param id 雇员id
@@ -747,7 +752,7 @@ param.put("id", 1);
 第一种方式:
 
 ```xml
-<select id="findByIdAndNameWithGender" resultType="employee">
+<select id="findByIdAndNameWithGender" resultType="com.crzmy.entity.Employee">
     SELECT
         *
     FROM
@@ -763,7 +768,7 @@ param.put("id", 1);
 第二种方式:
  
 ```xml
-<select id="findByIdAndNameWithGender" resultType="employee">
+<select id="findByIdAndNameWithGender" resultType="com.crzmy.entity.Employee">
     SELECT
         *
     FROM
@@ -777,3 +782,590 @@ param.put("id", 1);
 </select>
 ```
 至此,Mybatis的参数处理过程源码分析完毕.
+
+## Mybatis的参数值获取方式
+1. \#{} 方式: 以预编译的形式将参数添加到SQL语句中,防止SQL注入
+2. ${} 方式: 获取的值会直接拼装在SQL语句中,会有SQL注入风险
+
+大多数情况下,都是使用#{}方式来获取参数的值,但是也有例外.比如以下情况:  
+背景: 数据库中有多张表,记录了2012-2017年的工资数据,表的命名都是[年份_salary],如:2017\_salary  
+需求: 查询某年的某员工的工资数据  
+
+此时如果想通过传入的参数来获取目标表名,则不能使用#{},就应该使用${}.  
+
+假设EmployeeMapper中声明如下方法
+
+```java
+public interface EmployeeMapper{
+	Salary findSalaryByEmpId(Map map);
+}
+```
+测试代码
+
+```java
+public class AppTest{
+	@Test
+	public void test3() throws IOException{
+		SqlSessionFactory sqlSessionFactory = getSqlSessionFactory();
+		try(SqlSession sqlSession = sqlSessionFactory.openSession()){
+			EmployeeMapper mapper = sqlSession.getMapper(EmployeeMapper.class);
+			Map<String, Object> map = new HashMap<>();
+			map.put("empId",1);
+			/*
+			添加目标表名
+			*/
+			map.put("tableName","2017_salary");
+			Salary salary = findSalaryByEmpId(map);
+			System.out.println(salary);
+		}
+	}
+}
+```
+如果使用#{}方式
+
+```xml
+<select id="findSalaryByEmpId" resultType="com.crzmy.entity.Salary">
+	SELECT
+		* 
+	FROM
+		#{tableName}
+	WHERE
+		emp_id = #{empId}
+</select>
+```
+则生成的SQL语句为
+
+```sql
+select * from ? where emp_id = ?;
+```
+
+很显然这是语法错误.  
+现在使用${}方式
+
+```xml
+<select id="findSalaryByEmpId" resultType="com.crzmy.entity.Salary">
+	SELECT
+		* 
+	FROM
+		${tableName}
+	WHERE
+		emp_id = #{empId}
+</select>
+```
+则生成的SQL语句为
+
+```sql
+select * from 2017_salary where emp_id = ?;
+```
+正常执行.
+
+### \#{}方式获取参数值的其他用法
+
+* 规定参数的规则
+	* javaType
+	* jdbcType
+	* mode
+	* numericScale
+	* resultMap
+	* typeHandler
+	* jbbcTypeName
+	* expression
+
+从中讲几个代表性的	
+jdbcType通常需要在特定的情况下配置	
+在数据为null的时候,有些数据库可能不支持Mybatis对null的默认处理,比如Oracle数据库,在插入null值时会报错: 无效的列类型.	
+Mybatis对null的默认映射类型是JdbcType.OTHER
+
+枚举类JdbcType部分代码.
+
+```java
+public enum JdbcType {
+  /*
+   * This is added to enable basic support for the
+   * ARRAY data type - but a custom type handler is still required
+   */
+  ARRAY(Types.ARRAY),
+  BIT(Types.BIT),
+  TINYINT(Types.TINYINT),
+  /*
+  ...
+  */
+  
+  OTHER(Types.OTHER),
+  
+  /*
+  ...
+  */
+
+  public final int TYPE_CODE;
+  private static Map<Integer,JdbcType> codeLookup = new HashMap<Integer,JdbcType>();
+
+  static {
+    for (JdbcType type : JdbcType.values()) {
+      codeLookup.put(type.TYPE_CODE, type);
+    }
+  }
+
+  JdbcType(int code) {
+    this.TYPE_CODE = code;
+  }
+
+  public static JdbcType forCode(int code)  {
+    return codeLookup.get(code);
+  }
+
+}
+
+```
+而Oracle是不支持Jdbc的OTHER类型.	
+所以可以再SQL映射文件中进行如下配置:
+
+```xml
+<insert id="insertEmp">
+    INSERT INTO
+        tb_employee
+    VALUES
+        (#{empId}, #{empPwd}, #{empName, jdbcType=NULL})
+</insert>
+```
+在需要对null值进行处理的字段后添加jdbcType=NULL.这样Oracle就能正常的处理null值.如果此时还不能插入成功,记得检查表结构的Nullable是否是Yes.	
+对于null值处理的情况,还有一个解决方案.	
+在mybatis-config.xml里进行配置,在settings节点中加入新的setting节点,name属性为jdbcTypeForNull,value属性为NULL
+
+```xml
+<settings>
+    <!--开启日志打印-->
+    <!--<setting name="logImpl" value="STDOUT_LOGGING"/>-->
+    <!--开启驼峰命名转换-->
+    <setting name="mapUnderscoreToCamelCase" value="true"/>
+    <!--全局默认null的处理方式-->
+    <setting name="jdbcTypeForNull" value="NULL"/>
+</settings>
+```
+此时在SQL映射文件中不进行任何配置也能正常运行
+
+```xml
+<insert id="insertEmp">
+    INSERT INTO
+        tb_employee
+    VALUES
+        (#{empId}, #{empPwd}, #{empName})
+</insert>
+```
+正常插入.
+
+## Select元素及部分属性用法
+
+### 返回单个对象	
+在EmployeeMapper中定义方法
+
+```java
+public interface EmployeeMapper{
+
+	Employee findEmpByEmpId(Integer empId);
+}
+```
+在SQL映射文件EmployeeMapper.xml中添加配置
+
+```xml
+<select id="findEmpByEmpId" resultType="com.crzmy.entity.Employee">
+    SELECT
+        *
+    FROM
+        tb_employee
+    WHERE
+        emp_id = #{empId}
+</select>
+```
+编写测试方法
+
+```java
+@Test
+public void test() throws IOException{
+	// 获取SqlSessionFactory对象
+	SqlSessionFactory sqlSessionFactory = getSqlSessionFactory();
+	// 获取SqlSession对象
+	try(SqlSession sqlSession = sqlSessionFactory.openSession()){
+		// 会为接口创建一个代理对象,由代理对象去执行数据库操作.
+		/*
+		org.apache.ibatis.binding.MapperProxy@3c0ecd4b
+		 */
+		EmployeeMapper mapper = sqlSession.getMapper(EmployeeMapper.class);
+		
+		/* 获取返回的单个对象 */
+		Employee employee = mapper.findEmpByEmpId(1);
+		System.out.println(employee);
+	} catch (Exception e){
+		e.printStackTrace();
+	}
+
+}
+```
+这样就可以获取返回的单个对象并控制台输出.
+
+### 返回List\<T>	
+有些情况下,一个查询条件可能有多个值,所以需要封装在List中返回,这种情况只需要更改EmployeeMapper.java里的返回值类型.比如,在EmployeeMapper.java文件中添加方法List\<Employee> findEmpsByGender(String gender);该方法通过传入性别筛选数据.
+
+```java
+public interface EmployeeMapper{
+
+	Employee findEmpByEmpId(Integer empId);
+	
+	List<Employee> findEmpsByGender(String gender);
+}
+```
+
+EmployeeMapper.xml里添加如下配置,
+
+```xml
+<select id="findEmpsByGender" resultType="com.crzmy.entity.Employee">
+    SELECT
+        *
+    FROM
+        tb_employee
+    WHERE
+        emp_gender = #{gender}
+</select>
+```
+实际上只是原来的单个对象的配置方式改了id和判断条件而已,其他并无区别
+
+编写测试方法
+
+```java
+@Test
+public void test() throws IOException{
+	// 获取SqlSessionFactory对象
+	SqlSessionFactory sqlSessionFactory = getSqlSessionFactory();
+	// 获取SqlSession对象
+	try(SqlSession sqlSession = sqlSessionFactory.openSession()){
+		// 会为接口创建一个代理对象,由代理对象去执行数据库操作.
+		/*
+		org.apache.ibatis.binding.MapperProxy@3c0ecd4b
+		 */
+		EmployeeMapper mapper = sqlSession.getMapper(EmployeeMapper.class);
+		
+		/* 获取返回的多个Employee对象组成的List */
+		List<Employee> employees = findEmpsByGender("1");
+		
+		for(Employee e : employees){
+			System.out.println(e);
+		}
+	} catch (Exception e){
+		e.printStackTrace();
+	}
+
+}
+```
+这样就可以获取多个Employee对象组成的List.
+
+### 返回单条记录封装一个Map映射
+
+有些时候需要把对象的属性作为Map的key, 查询到的数据为value.	
+在EmployeeMapper.java中添加方法
+
+```java
+public interface EmployeeMapper{
+	Map<String, Object> findEmpByEmpIdReturnMap(Integer empId);
+}
+```
+在EmployeeMapper.xml文件中添加select节点
+
+```xml
+<select id="findEmpByEmpIdReturnMap" resultType="map">
+    SELECT
+        *
+    FROM
+        tb_employee
+    WHERE
+        emp_id = #{empId}
+</select>
+```
+编写测试方法
+
+```java
+@Test
+public void test() throws IOException{
+	SqlSessionFactory sqlSessionFactory = getSqlSessionFactory();
+	try(SqlSession sqlSession = sqlSessionFactory.openSession()){
+		EmployeeMapper mapper = sqlSession.getMapper(EmployeeMapper.class);
+		
+		/* 获取返回的Map */
+		Map<String, Object> emp = mapper.findEmpByEmpIdReturnMap(1);
+		System.out.println(emp);
+	}
+}
+```
+这样就可以正常获取封装好的Map,控制台打印的结果就是
+
+```text
+{emp_name=ray, emp_pwd=123456, emp_email=crrruiii@163.com, emp_gender=1, emp_id=1}
+```
+
+### 返回多条记录封装一个Map映射
+key为主键, value是封装后的对象
+
+在EmployeeMapper.java中添加如下方法, 注意MapKey注解
+
+```java
+public interface EmployeeMapper{
+	@MapKey("empId")
+	Map<String, Employee> findEmpsByGenderReturnMap(String gender);
+}
+```
+在EmployeeMapper.xml文件中添加select节点
+
+```xml
+<select id="findEmpsByGenderReturnMap" resultType="com.crzmy.entity.Employee">
+    SELECT
+        *
+    FROM
+        tb_employee
+    WHERE
+        emp_gender = #{gender}
+</select>
+```
+编写测试方法
+
+```java
+@Test
+public void test() throws IOException{
+	SqlSessionFactory sqlSessionFactory = getSqlSessionFactory();
+	try(SqlSession sqlSession = sqlSessionFactory.openSession()){
+		EmployeeMapper mapper = sqlSession.getMapper(EmployeeMapper.class);
+		Map<String, Employee> emps = mapper.findEmpsByGenderReturnMap("1");
+		for (Map.Entry kv : emps.entrySet()){
+			System.out.println(kv.getKey() + " - " + kv.getValue());
+		}
+	}
+}
+```
+这样就可以获取多条记录封装的map, key为雇员id, value则为Employee对象,控制台打印结果为
+
+```text
+1 - Employee(empId=1, empPwd=123456, empName=ray, empGender=1, empEmail=crrruiii@163.com)
+2 - Employee(empId=2, empPwd=123456, empName=Jack, empGender=1, empEmail=jack@163.com)
+3 - Employee(empId=3, empPwd=123456, empName=Bob, empGender=1, empEmail=Bob@163.com)
+6 - Employee(empId=6, empPwd=123456, empName=Bob, empGender=1, empEmail=Bob@163.com)
+7 - Employee(empId=7, empPwd=123456, empName=Bob, empGender=1, empEmail=Bob@163.com)
+8 - Employee(empId=8, empPwd=123456, empName=Bob, empGender=1, empEmail=Bob@163.com)
+9 - Employee(empId=9, empPwd=123456, empName=Bob, empGender=1, empEmail=Bob@163.com)
+```
+### select元素的属性
+
+属性 | 描述
+---|---
+parameterType | 将传入该条语句的参数的类的全路径或别名,这个属性是可选的.Mybatis可以通过TypeHandler推断出具体传入的参数,默认值为unset.
+resultType | 该条语句返回的期望类型的类的全路径或别名,如果是集合,则是集合里包含的类型,而不是集合本身(上文的例子).该属性和resultMap不能同时使用.
+resultMap | 外部resultMap的明明引用,需要在SQL映射文件中使用resultMap元素自定义映射规则,然后在该属性指定.不能和resultType同时使用
+flushCache | 将其设置为 true，任何时候只要语句被调用，都会导致本地缓存和二级缓存都会被清空，默认值：false。
+useCache | 将其设置为 true，将会导致本条语句的结果被二级缓存，默认值：对 select 元素为 true。
+timeout | 这个设置是在抛出异常之前，驱动程序等待数据库返回请求结果的秒数。默认值为 unset（依赖驱动）。
+fetchSize | 这是尝试影响驱动程序每次批量返回的结果行数和这个设置值相等。默认值为 unset（依赖驱动）。
+statementType | STATEMENT，PREPARED 或 CALLABLE 的一个。这会让 MyBatis 分别使用 Statement，PreparedStatement 或 CallableStatement，默认值：PREPARED。
+resultSetType | FORWARD_ONLY，SCROLL_SENSITIVE 或 SCROLL_INSENSITIVE 中的一个，默认值为 unset （依赖驱动）。
+databaseId | 如果配置了 databaseIdProvider，MyBatis 会加载所有的不带 databaseId 或匹配当前 databaseId 的语句；如果带或者不带的语句都有，则不带的会被忽略。
+resultOrdered | 这个设置仅针对嵌套结果 select 语句适用：如果为 true，就是假设包含了嵌套结果集或是分组了，这样的话当返回一个主结果行的时候，就不会发生有对前面结果集的引用的情况。这就使得在获取嵌套的结果集的时候不至于导致内存不够用。默认值：false。
+resultSets | 这个设置仅对多结果集的情况适用，它将列出语句执行后返回的结果集并每个结果集给一个名称，名称是逗号分隔的。
+
+#### 部分属性使用示例
+
+* resultType
+
+指定resultType为期望类型的类全路径,就可以将查询到的记录自动映射封装成JavaBean
+
+```xml
+<select id="findEmpByEmpId" resultType="com.crzmy.entity.Employee">
+    SELECT
+        *
+    FROM
+        tb_employee
+    WHERE
+        emp_id = #{empId}
+</select>
+```
+
+* resultMap [最强大的功能]
+
+	* 基本用法
+
+	使用resultMap自定义映射规则, 然后在select元素的resultMap属性指定定义好的映射规则.这样就可以再关闭驼峰命名的情况下也能正常的映射封装.
+	
+	```xml
+	<resultMap id="BaseMap" type="com.crzmy.entity.Employee">
+	    <id column="emp_id" jdbcType="INTEGER" property="empId"/>
+	    <result column="emp_pwd" jdbcType="VARCHAR" property="empPwd"/>
+	    <result column="emp_name" jdbcType="VARCHAR" property="empName"/>
+	    <result column="emp_gender" jdbcType="CHAR" property="empGender"/>
+	    <result column="emp_email" jdbcType="VARCHAR" property="empEmail"/>
+	</resultMap>
+	
+	<select id="findEmpByEmpId" resultMap="BaseMap">
+	    SELECT
+	        *
+	    FROM
+	        tb_employee
+	    WHERE
+	        emp_id = #{empId}
+	</select>
+	```
+	
+	* 高级用法
+
+		* 联合查询
+
+		比如查询员工的同时查询出所在部门的信息	
+		
+		在数据库中新建表tb\_department
+		
+		```sql
+		CREATE TABLE tb_department (
+		  	dept_id int(11) NOT NULL AUTO_INCREMENT,
+		  	dept_name varchar(45) DEFAULT NULL,
+		  	PRIMARY KEY (dept_id)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8
+		```
+		
+		在表tb\_employee中添加dept\_id字段,
+		
+		```sql
+		ALTER TABLE tb_employee ADD COLUMN dept_id INT(11);
+		```
+		新建Department类
+		
+		```java
+		@Getter
+		@Setter
+		@AllArgsConstructor
+		@NoArgsConstructor
+		@ToString
+		public class Department {
+			
+			/**
+			 * 部门id
+			 */
+			private Integer deptId;
+			
+			/**
+			 * 部门名
+			 */
+			private String deptName;
+			
+		}
+		```
+		
+		在Employee类中添加department属性
+		
+		```java
+		@Getter
+		@Setter
+		@NoArgsConstructor
+		@AllArgsConstructor
+		@ToString
+		public class Employee {
+			/**
+			* 雇员id
+			*/
+			private Integer empId;
+			
+			/**
+			* 雇员密码
+			*/
+			private String empPwd;
+			
+			/**
+			* 雇员名字
+			*/
+			private String empName;
+			
+			/**
+			* 雇员性别
+			*/
+			private String empGender;
+			
+			/**
+			* 雇员邮箱
+			*/
+			private String empEmail;
+			
+			/**
+			* 雇员部门
+			*/
+			private Department department;
+		}
+		```
+		在EmployeeMapper.java中声明方法
+		
+		```java
+		public interface EmployeeMapper{
+		
+			Employee findEmpWithDeptByEmpId(Integer empId);
+			
+		}
+		```
+		
+		在SQL映射文件中创建映射规则
+		
+		```xml
+		<resultMap id="EmpWithDept" type="com.crzmy.entity.Employee">
+			<id column="emp_id" property="empId"/>
+			<result column="emp_name" property="empName"/>
+			<result column="emp_gender" property="empGender"/>
+			<result column="emp_email" property="empEmail"/>
+			<result column="dept_id" property="department.deptId"/>
+			<result column="dept_name" property="department.deptName"/>
+		</resultMap>
+		```
+		
+		创建select节点
+		
+		```xml
+		<select id="findEmpWithDeptByEmpId" resultMap="EmpWithDept">
+			SELECT
+				*
+			FROM
+				tb_employee e, tb_department d
+			WHERE
+				e.dept_id = d.dept_id
+			AND
+				e.emp_id = #{empId}
+		</select>
+		```
+		
+		编写测试方法
+		
+		```java
+		@Test
+		public void test() throws IOException{
+			SqlSessionFactory sqlSessionFactory = getSqlSessionFactory();
+			try(SqlSession sqlSession = sqlSessionFactory.openSession()){
+				EmployeeMapper mapper = sqlSession.getMapper(EmployeeMapper.class);
+				Employee emp = mapper.findEmpWithDeptByEmpId(1);
+				System.out.println(emp);
+			}
+		}
+		```
+		控制台打印
+		
+		```text
+		Employee(empId=1, empPwd=123456, empName=ray, empGender=1, empEmail=crrruiii@163.com, department=Department(deptId=1, deptName=开发部))
+		```
+		
+		* 联合查询使用association
+
+		上面的方法在映射部门属性时,直接使用的级联属性,还有一种方法就是使用association.将上面的resultMap做如下修改.
+		
+		```xml
+		<resultMap id="EmpWithDept" type="com.crzmy.entity.Employee">
+			<id column="emp_id" property="empId"/>
+			<result column="emp_name" property="empName"/>
+			<result column="emp_gender" property="empGender"/>
+			<result column="emp_email" property="empEmail"/>
+			<!-- property为Employee中的department属性, javaType为Department类的全路径 -->
+			<association property="department" javaType="com.crzmt.entity.Department">
+				<id column="dept_id" property="deptId"/>
+				<result column="dept_name" property="deptName"/>
+			</association>
+		</resultMap>
+		```
+		
+		测试方法不作任何改变,同样能获取雇员的所在部门信息.
