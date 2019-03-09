@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE configuration
+        PUBLIC "-//mybatis.org//DTD Config 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-config.dtd">
+<configuration>
+    <properties resource="db.properties"/>
+    <settings>
+        <!--开启日志打印-->
+        <!--<setting name="logImpl" value="STDOUT_LOGGING"/>-->
+        <!--开启驼峰命名转换-->
+        <setting name="mapUnderscoreToCamelCase" value="true"/>
+    </settings>
+
+    <!--typeAliases-->
+    <typeAliases>
+        <!--
+        第一种方式:
+            typeAlias 为单个类配置别名
+            在*Mapper.xml文件中可以直接用别名代替类的全路径
+            默认是类名小写
+            比如Employee的默认别名就是employee
+            也可以使用alias属性指定自定义别名-->
+        <!--<typeAlias type="com.crzmy.entity.Employee"/>-->
+
+        <!--
+        第二种方式:
+            package: 批量指定别名
+            为指定的包路径下的所有类指定别名,默认是类名小写-->
+        <package name="com.crzmy.entity"/>
+
+        <!--
+        第三种方式:
+            可以使用@Alias注解为某个类指定新的别名
+        -->
+    </typeAliases>
+
+
+    <!--
+    environments 可以配置多个环境,default属性指定当前默认使用的环境
+        environment 配置一个环境的具体信息,id属性表示当前环境的唯一标示
+            必要子标签:
+                transactionManager 事务管理器
+                    type属性指定事务管理器的类型:JDBC, MANAGED
+                    通过实现TransactionFactory接口来实现自定义事务管理器,type配置则为类的全路径
+                dataSource 数据源
+                    type属性指定数据源类型:UNPOOLED, POOLED, JNDI
+                    通过实现DataSourceFactory接口来实现自定义数据源,type配置则为类的全路径
+    -->
+    <environments default="development">
+        <environment id="development">
+            <transactionManager type="JDBC"/>
+
+            <!--配置数据源-->
+            <dataSource type="POOLED">
+                <property name="driver" value="${jdbc.driverClass}"/>
+                <property name="url" value="${jdbc.url}"/>
+                <property name="username" value="${jdbc.user}"/>
+                <property name="password" value="${jdbc.password}"/>
+            </dataSource>
+        </environment>
+    </environments>
+
+    <!--
+    配置支持多数据库厂商
+    配置数据库厂商标识,使mybatis根据标识来执行不同的SQL
+    MySQL, Oracle, SQL Server, DB2
+    -->
+    <databaseIdProvider type="DB_VENDOR">
+        <!--为不同的数据库厂商指定别名-->
+        <property name="MySQL" value="mysql"/>
+        <property name="Oracle" value="oracle"/>
+    </databaseIdProvider>
+    <mappers>
+        <!--注册Sql映射文件-->
+        <mapper resource="mapper/EmployeeMapper.xml"/>
+    </mappers>
+</configuration>

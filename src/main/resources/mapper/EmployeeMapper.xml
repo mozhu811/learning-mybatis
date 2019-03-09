@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.ord//DTD Mapper 3.0//EN"
+        "http://mybatis.ord/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.crzmy.mapper.EmployeeMapper">
+    <resultMap id="BaseMap" type="com.crzmy.entity.Employee">
+        <id column="emp_id" jdbcType="INTEGER" property="empId"/>
+        <result column="emp_pwd" jdbcType="VARCHAR" property="empPwd"/>
+        <result column="emp_name" jdbcType="VARCHAR" property="empName"/>
+        <result column="emp_gender" jdbcType="INTEGER" property="empGender"/>
+        <result column="emp_email" jdbcType="VARCHAR" property="empEmail"/>
+    </resultMap>
+
+    <resultMap id="EmpWithDept" type="com.crzmy.entity.Employee">
+        <id column="emp_id" property="empId"/>
+        <result column="emp_name" property="empName"/>
+        <result column="emp_gender" property="empGender"/>
+        <result column="emp_email" property="empEmail"/>
+        <result column="dept_id" property="department.deptId"/>
+        <result column="dept_name" property="department.deptName"/>
+    </resultMap>
+
+    <select id="empLogin" resultType="integer">
+        SELECT
+            count(*)
+        FROM
+            tb_employee
+        WHERE
+            emp_id = #{empId} AND emp_pwd = #{empPwd}
+    </select>
+
+    <select id="findEmpByEmpId" resultType="com.crzmy.entity.Employee">
+        SELECT
+            *
+        FROM
+            tb_employee
+        WHERE
+            emp_id = #{empId}
+    </select>
+
+    <select id="findEmpsByGender" resultType="com.crzmy.entity.Employee">
+        SELECT
+            *
+        FROM
+            tb_employee
+        WHERE
+            emp_gender = #{gender}
+    </select>
+
+    <select id="findEmpByEmpIdReturnMap" resultType="map">
+        SELECT
+            *
+        FROM
+            tb_employee
+        WHERE
+            emp_id = #{empId}
+    </select>
+
+    <select id="findEmpsByGenderReturnMap" resultType="com.crzmy.entity.Employee">
+        SELECT
+            *
+        FROM
+            tb_employee
+        WHERE
+            emp_gender = #{gender}
+    </select>
+
+    <select id="findByIdAndNameWithGender" resultType="com.crzmy.entity.Employee">
+        SELECT
+            *
+        FROM
+            tb_employee
+        WHERE
+            emp_id = #{empId}
+        AND
+            emp_name = #{empName}
+        AND
+            emp_gender = #{param3}
+    </select>
+
+    <select id="findEmpWithDeptByEmpId" resultMap="EmpWithDept">
+        SELECT
+            *
+        FROM
+            tb_employee e, tb_department d
+        WHERE
+            e.dept_id = d.dept_id
+        AND
+            e.emp_id = #{empId}
+    </select>
+
+    <!-- MySQL数据库使用主键自增策略,插入后将主键赋值给对象的empId属性-->
+    <insert id="insertEmp" useGeneratedKeys="true" keyProperty="empId">
+        INSERT INTO
+            tb_employee
+        VALUES
+            (#{empId}, #{empPwd}, #{empName}, #{empGender}, #{empEmail})
+    </insert>
+
+    <!--
+    由于Oracle数据库不支持自增主键,但是可以通过序列获取
+    每次插入之前都要获取当前的序列,然后赋值给对象的empId属性,再插入数据库
+    -->
+    <insert id="insertEmpOracle" databaseId="oracle">
+        <selectKey keyProperty="empId" order="BEFORE" resultType="integer">
+            SELECT
+                tb_employee_seq.nextval
+            FROM
+                dual
+        </selectKey>
+        INSERT INTO
+            tb_employee
+        VALUES
+            (#{empId}, #{empPwd}, #{empName}, #{empGender}, #{empEmail})
+    </insert>
+
+    <update id="modifyEmp">
+        UPDATE
+            tb_employee
+        SET
+            emp_id = #{empId},
+            emp_pwd = #{empPwd},
+            emp_name = #{empName},
+            emp_gender = #{empGender},
+            emp_email = #{empEmail}
+        WHERE
+            emp_id = #{empId}
+    </update>
+
+    <delete id="deleteEmpById">
+        DELETE FROM
+            tb_employee
+        WHERE
+            emp_id = #{empId}
+    </delete>
+    
+    <!--通过指定databaseId来指定该SQL语句是发往哪一种数据库-->
+    <select id="testDataSourceProductId" databaseId="oracle" resultType="com.crzmy.entity.Employee">
+        SELECT
+            *
+        FROM
+            tb_employee
+        WHERE
+            emp_gender = #{empGender}
+    </select>
+</mapper>

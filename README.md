@@ -1,12 +1,12 @@
 * [项目介绍](#项目介绍)
 * [Mybatis参数处理方式](#mybatis参数处理方式)
-	* [通常方式](#通常方式)
-	* [通过POJO传递](#通过pojo传递)
-	* [通过Map容器传递](#通过map容器传递)
-	* [通过DTO传递](#通过dto传递)
-	* [其他情况](#其他情况)
+  * [通常方式](#通常方式)
+  * [通过POJO传递](#通过pojo传递)
+  * [通过Map容器传递](#通过map容器传递)
+  * [通过DTO传递](#通过dto传递)
+  * [其他情况](#其他情况)
 * [源码分析Mybatis的参数处理过程](#源码分析mybatis的参数处理过程)
-      
+  ​    
 ## 项目介绍
 该repo为学习Mybatis时的记录,该文档主要记录Mybatis的相关知识和源码分析.
 
@@ -172,7 +172,7 @@ public class AppTest{
 ```
 第一行代码,mybatis会使用MapperProxyFactory类中的newInstance(MapperProxy<T> mapperProxy)方法来使用JDK动态代理生成EmployeeMapper代理对象  
 通过代理对象来与数据库进行会话. 
- 
+
 ```java
 public class MapperProxyFactory{
 	/*
@@ -218,7 +218,7 @@ public Object invoke(Object proxy, Method method, Object[] args) throws Throwabl
 }
 ```
 如果是Object类里的方法,如toString(),hashCode()等方法,则直接通过反射执行  
- 
+
 > MapperProxy是一个InvocationHandler,在使用JDK动态代理生成对象时使用,  
 > 会根据该接口生成动态代理对象,然后利用反射调用实际对象的目标方法.  
 > 然而动态代理对象里面的方法是有接口(interface)声明的.  
@@ -721,7 +721,7 @@ return args[names.firstKey()];
 则相当于  
 return args[0];返回 1 
 */
-``` 
+```
 
 
 如果使用了@Param注解,则遍历Map容器names,以value作为key和args数组对应索引的值作为value存储到Map容器param中  
@@ -761,7 +761,7 @@ param.put("id", 1);
 </select>
 ```
 第二种方式:
- 
+
 ```xml
 <select id="findByIdAndNameWithGender" resultType="employee">
     SELECT
